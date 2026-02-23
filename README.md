@@ -60,7 +60,7 @@ Most LLMs hallucinate when asked about specific documents. This project solves t
 - **Chat export** — download the conversation history as a `.txt` file for offline reference or record-keeping
 ---
 
-## 🛠️ Tech Stack
+## Tech Stack
 
 | Component | Technology |
 |---|---|
@@ -72,7 +72,7 @@ Most LLMs hallucinate when asked about specific documents. This project solves t
 | Orchestration | Python 3.9+ |
 ---
 
-## 🔭 Future Roadmap
+## Future Roadmap
 
 **Hybrid Search** — Combine dense vector retrieval with BM25 sparse retrieval (reciprocal rank fusion) to improve recall on keyword-heavy queries and named entities.
 

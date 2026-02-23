@@ -8,7 +8,7 @@ from utils.vector_store import ChromaVectorStore
 from utils.context_manager import build_prompt
 
 load_dotenv()
-API_KEY = os.getenv("GEMINI_API_KEY")
+API_KEY = os.getenv("GEMINI_API_KEY") or st.secrets.get("GEMINI_API_KEY", None)
 
 st.set_page_config(
     page_title="GenAI Document Assistant",

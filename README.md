@@ -1,14 +1,12 @@
 # GenAI Multi-Document Assistant
 
-> A production-grade Retrieval-Augmented Generation (RAG) system that enables intelligent, citation-aware question answering over multiple PDF documents — powered by Google Gemini 2.5 Flash and ChromaDB.
+A production-grade Retrieval-Augmented Generation (RAG) system that enables intelligent, citation-aware question answering over multiple PDF documents — powered by Google Gemini 2.5 Flash and ChromaDB.
 
----
 
 ## Objective
 
 Most LLMs hallucinate when asked about specific documents. This project solves that by grounding every answer in retrieved document content — so responses are accurate, traceable, and cited by source and page number.
 
----
 
 ## System Architecture
 
@@ -47,7 +45,7 @@ Most LLMs hallucinate when asked about specific documents. This project solves t
 └─────────────────────┘
 ```
 
----
+
 
 ## Key Features
 

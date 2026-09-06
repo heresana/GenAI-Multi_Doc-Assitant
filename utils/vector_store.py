@@ -1,7 +1,7 @@
 # utils/vector_store.py
 
 import chromadb
-from sentence_transformers import SentenceTransformer
+from sentence_transformers import SentenceTransformer, CrossEncoder
 import hashlib
 
 
@@ -11,9 +11,18 @@ class ChromaVectorStore:
         Initialize an in-memory Chroma client (session-scoped).
         Each document is stored in a single shared collection,
         tagged with a doc_id for filtering.
+
+        Two models are used:
+          - self.embedding_model (bi-encoder): fast, independent embeddings
+            for documents and queries. Used for the initial wide retrieval
+            over the whole collection.
+          - self.reranker (cross-encoder): slower, pairwise query-document
+            scoring. Used only on the small shortlist returned by the
+            bi-encoder, to sharpen precision before handing chunks to the LLM.
         """
         self.client = chromadb.Client()  # ephemeral / in-memory
         self.embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
+        self.reranker = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
 
         self.collection = self.client.get_or_create_collection(
             name="multi_document_store",
@@ -63,11 +72,26 @@ class ChromaVectorStore:
         query: str,
         top_k: int = 5,
         doc_ids: list[str] | None = None,
+        retrieve_k: int = 20,
+        use_reranker: bool = True,
     ) -> list[dict]:
         """
-        Retrieve the top-k most relevant chunks.
-        Optionally filter to specific doc_ids.
-        Returns a list of dicts: {content, doc_name, page, distance}.
+        Two-stage retrieval:
+
+          Stage 1 (recall)   - bi-encoder cosine search over the whole
+                                collection, pulling back `retrieve_k`
+                                candidates (wide net, cheap per-candidate cost).
+          Stage 2 (precision) - cross-encoder re-scores each of those
+                                candidates jointly with the query, and only
+                                the top `top_k` survive. This catches cases
+                                where two chunks look similar in embedding
+                                space but differ in actual relevance.
+
+        Set use_reranker=False to fall back to pure bi-encoder ranking
+        (e.g. for a quick A/B comparison, or if latency is a concern).
+
+        Returns a list of dicts: {content, doc_name, doc_id, page, distance,
+        rerank_score (if reranker used)}.
         """
         query_embedding = self.embed_texts([query])
 
@@ -75,9 +99,11 @@ class ChromaVectorStore:
             {"doc_id": {"$in": doc_ids}} if doc_ids and len(doc_ids) > 0 else None
         )
 
+        n_results = min(max(retrieve_k, top_k), self.collection.count() or 1)
+
         kwargs = dict(
             query_embeddings=query_embedding,
-            n_results=min(top_k, self.collection.count() or 1),
+            n_results=n_results,
             include=["documents", "metadatas", "distances"],
         )
         if where_filter:
@@ -99,8 +125,21 @@ class ChromaVectorStore:
                 "distance": dist,
             })
 
+        # Stage 1 fallback ordering (used as-is if reranker is skipped)
         hits.sort(key=lambda x: x["distance"])
-        return hits
+
+        if not use_reranker or not hits:
+            return hits[:top_k]
+
+        # Stage 2: cross-encoder re-ranking on the shortlist only
+        pairs = [[query, h["content"]] for h in hits]
+        scores = self.reranker.predict(pairs)
+
+        for h, score in zip(hits, scores):
+            h["rerank_score"] = float(score)
+
+        hits.sort(key=lambda x: x["rerank_score"], reverse=True)
+        return hits[:top_k]
 
     def delete_document(self, doc_id: str) -> None:
         """Remove all chunks belonging to a document."""
